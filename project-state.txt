@@ -1,0 +1,1801 @@
+
+
+?? PACKAGE.JSON
+{
+  "name": "school-management-system",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@auth/prisma-adapter": "^2.11.1",
+    "@prisma/adapter-pg": "^7.4.0",
+    "@prisma/client": "^7.4.0",
+    "@supabase/supabase-js": "^2.95.3",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.564.0",
+    "next": "16.1.6",
+    "next-auth": "^4.24.13",
+    "pg": "^8.18.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-hot-toast": "^2.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^3.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "prisma": "^7.4.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}
+
+
+
+
+
+?? ENVIRONMENT VARIABLES
+DATABASE_URL="postgresql://postgres:*****@localhost:5432/school_management"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="your-secret-key-here"
+JWT_SECRET="another-secret-key"
+APP_NAME="EduManage NG"
+
+
+
+
+
+?? PRISMA SCHEMA
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model School {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  users     User[]
+  students  Student[]
+  teachers  Teacher[]
+  admins    Admin[]
+  classes   Class[]
+  sessions  Session[]
+  terms     Term[]
+  results   Result[]
+  
+  @@map("schools")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  email     String   @unique
+  password  String?
+  role      UserRole @default(STUDENT)
+  name      String
+  
+  student   Student?
+  teacher   Teacher?
+  admin     Admin?
+  
+  @@map("users")
+}
+
+model Student {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id])
+  
+  studentId   String
+  dateOfBirth DateTime
+  classId     String
+  class       Class    @relation(fields: [classId], references: [id])
+  arm         String?
+  
+  results     Result[]
+  
+  @@unique([schoolId, studentId])
+  @@map("students")
+}
+
+model Teacher {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id])
+  
+  teacherId   String
+  classIds    String[]
+  
+  @@map("teachers")
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  @@map("admins")
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  name      String
+  arms      String[]
+  
+  students  Student[]
+  
+  @@unique([schoolId, name])
+  @@map("classes")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  name      String
+  isActive  Boolean  @default(false)
+  
+  terms     Term[]
+  
+  @@unique([schoolId, name])
+  @@map("sessions")
+}
+
+model Term {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  name      String
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id])
+  isActive  Boolean  @default(false)
+  
+  @@unique([schoolId, sessionId, name])
+  @@map("terms")
+}
+
+model Result {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  
+  className String
+  arm       String?
+  term      String
+  session   String
+  
+  subjects  Json
+  
+  totalScore    Int
+  averageScore  Float
+  position      Int?
+  totalStudents Int?
+  
+  classTeacherRemark String?
+  principalRemark    String?
+  recommendation     String?
+  
+  status        ResultStatus @default(PENDING)
+  
+  submittedBy   String
+  submittedAt   DateTime     @default(now())
+  approvedBy    String?
+  approvedAt    DateTime?
+  
+  @@unique([schoolId, studentId, session, term])
+  @@map("results")
+}
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum ResultStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+
+
+
+?? PRISMA CLIENT
+import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { Pool } from 'pg'
+
+const globalForPrisma = global as unknown as { prisma: PrismaClient }
+
+// Create a PostgreSQL connection pool
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const adapter = new PrismaPg(pool)
+
+// Initialize Prisma Client with the adapter
+export const prisma = globalForPrisma.prisma || new PrismaClient({
+  adapter,
+  log: ['error', 'warn'],
+})
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+
+export default prisma
+
+
+
+
+
+?? LOGIN PAGE
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { LogIn, User, Lock } from 'lucide-react';
+import { mockTeachers, mockStudents, adminUser } from '@/lib/mockData';
+import toast from 'react-hot-toast';
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('student');
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Simple role-based login
+    if (role === 'admin' && email === adminUser.email && password === adminUser.password) {
+      router.push('/admin');
+      toast.success('Admin login successful');
+    } 
+    else if (role === 'teacher') {
+      const teacher = mockTeachers.find(t => t.email === email && t.password === password);
+      if (teacher) {
+        router.push('/teacher');
+        toast.success(`Welcome ${teacher.name}`);
+      } else {
+        toast.error('Invalid teacher credentials');
+      }
+    }
+    else if (role === 'student') {
+      const student = mockStudents.find(s => s.email === email && s.password === password);
+      if (student) {
+        router.push('/student');
+        toast.success(`Welcome ${student.name}`);
+      } else {
+        toast.error('Invalid student credentials');
+      }
+    }
+    else {
+      toast.error('Invalid credentials');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+        <div className="text-center mb-8">
+          <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <LogIn className="h-8 w-8 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold">School Management System</h1>
+          <p className="text-gray-600">Sign in to your account</p>
+        </div>
+
+        <form onSubmit={handleLogin}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">I am a</label>
+            <select 
+              className="w-full border rounded-md px-3 py-2"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <input
+                type="email"
+                required
+                className="w-full pl-10 pr-3 py-2 border rounded-md"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <input
+                type="password"
+                required
+                className="w-full pl-10 pr-3 py-2 border rounded-md"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
+          >
+            Sign In
+          </button>
+        </form>
+
+        {/* Demo Credentials */}
+        <div className="mt-6 text-sm text-gray-500">
+          <p className="font-medium mb-2">Demo Login:</p>
+          <p>Student: student@school.com / password</p>
+          <p>Teacher: john.okonkwo@school.com / password</p>
+          <p>Admin: admin@school.com / admin123</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+
+?? ADMIN DASHBOARD
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { 
+  LayoutDashboard, 
+  Users, 
+  GraduationCap, 
+  BookOpen,
+  LogOut,
+  Plus,
+  Edit,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  Eye,
+  Search,
+  Filter
+} from 'lucide-react';
+import { mockTeachers, mockStudents, mockClasses, mockResults } from '@/lib/mockData';
+import toast from 'react-hot-toast';
+
+export default function AdminDashboard() {
+  const router = useRouter();
+  const [activeMenu, setActiveMenu] = useState('dashboard');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedArm, setSelectedArm] = useState('');
+
+  // Stats for dashboard
+  const stats = {
+    totalClasses: mockClasses.length,
+    totalTeachers: mockTeachers.length,
+    totalStudents: mockStudents.length,
+    pendingResults: mockResults.length,
+  };
+
+  // Filter results based on class and arm
+  const filteredResults = mockResults.filter(result => {
+    const matchesClass = !selectedClass || result.className === selectedClass;
+    const matchesArm = !selectedArm || result.arm === selectedArm;
+    const matchesSearch = result.studentName.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesClass && matchesArm && matchesSearch;
+  });
+
+  const handleApproveResult = (resultId: string) => {
+    toast.success('Result approved successfully');
+  };
+
+  const handleRejectResult = (resultId: string) => {
+    toast.success('Result rejected');
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Sidebar */}
+      <div className="w-64 bg-white shadow-lg">
+        <div className="p-6">
+          <h1 className="text-xl font-bold text-purple-700">Admin Panel</h1>
+        </div>
+        
+        <nav className="mt-4">
+          <button
+            onClick={() => setActiveMenu('dashboard')}
+            className={`w-full flex items-center gap-3 px-6 py-3 text-left ${
+              activeMenu === 'dashboard' ? 'bg-purple-50 text-purple-700 border-r-4 border-purple-700' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <LayoutDashboard className="h-5 w-5" />
+            Dashboard
+          </button>
+
+          <button
+            onClick={() => setActiveMenu('classes')}
+            className={`w-full flex items-center gap-3 px-6 py-3 text-left ${
+              activeMenu === 'classes' ? 'bg-purple-50 text-purple-700 border-r-4 border-purple-700' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <BookOpen className="h-5 w-5" />
+            Manage Classes
+          </button>
+
+          <button
+            onClick={() => setActiveMenu('teachers')}
+            className={`w-full flex items-center gap-3 px-6 py-3 text-left ${
+              activeMenu === 'teachers' ? 'bg-purple-50 text-purple-700 border-r-4 border-purple-700' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Users className="h-5 w-5" />
+            Manage Teachers
+          </button>
+
+          <button
+            onClick={() => setActiveMenu('students')}
+            className={`w-full flex items-center gap-3 px-6 py-3 text-left ${
+              activeMenu === 'students' ? 'bg-purple-50 text-purple-700 border-r-4 border-purple-700' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <GraduationCap className="h-5 w-5" />
+            Manage Students
+          </button>
+
+          <button
+            onClick={() => setActiveMenu('results')}
+            className={`w-full flex items-center gap-3 px-6 py-3 text-left ${
+              activeMenu === 'results' ? 'bg-purple-50 text-purple-700 border-r-4 border-purple-700' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Eye className="h-5 w-5" />
+            View / Approve Results
+          </button>
+        </nav>
+
+        <div className="absolute bottom-0 w-64 p-6">
+          <button
+            onClick={() => router.push('/login')}
+            className="flex items-center gap-3 text-gray-600 hover:text-gray-800"
+          >
+            <LogOut className="h-5 w-5" />
+            Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 p-8">
+        {/* DASHBOARD */}
+        {activeMenu === 'dashboard' && (
+          <div>
+            <h2 className="text-2xl font-bold mb-6">Dashboard Overview</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">Total Classes</p>
+                    <p className="text-3xl font-bold mt-1">{stats.totalClasses}</p>
+                  </div>
+                  <div className="bg-purple-100 p-3 rounded-lg">
+                    <BookOpen className="h-6 w-6 text-purple-600" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">Total Teachers</p>
+                    <p className="text-3xl font-bold mt-1">{stats.totalTeachers}</p>
+                  </div>
+                  <div className="bg-blue-100 p-3 rounded-lg">
+                    <Users className="h-6 w-6 text-blue-600" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">Total Students</p>
+                    <p className="text-3xl font-bold mt-1">{stats.totalStudents}</p>
+                  </div>
+                  <div className="bg-green-100 p-3 rounded-lg">
+                    <GraduationCap className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">Results Submitted</p>
+                    <p className="text-3xl font-bold mt-1">{stats.pendingResults}</p>
+                  </div>
+                  <div className="bg-yellow-100 p-3 rounded-lg">
+                    <Eye className="h-6 w-6 text-yellow-600" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="mt-8 bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button onClick={() => setActiveMenu('classes')} className="p-4 border rounded-lg hover:bg-gray-50">
+                  <BookOpen className="h-6 w-6 text-purple-600 mx-auto mb-2" />
+                  <span className="text-sm">Manage Classes</span>
+                </button>
+                <button onClick={() => setActiveMenu('teachers')} className="p-4 border rounded-lg hover:bg-gray-50">
+                  <Users className="h-6 w-6 text-blue-600 mx-auto mb-2" />
+                  <span className="text-sm">Manage Teachers</span>
+                </button>
+                <button onClick={() => setActiveMenu('students')} className="p-4 border rounded-lg hover:bg-gray-50">
+                  <GraduationCap className="h-6 w-6 text-green-600 mx-auto mb-2" />
+                  <span className="text-sm">Manage Students</span>
+                </button>
+                <button onClick={() => setActiveMenu('results')} className="p-4 border rounded-lg hover:bg-gray-50">
+                  <Eye className="h-6 w-6 text-yellow-600 mx-auto mb-2" />
+                  <span className="text-sm">View Results</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MANAGE CLASSES */}
+        {activeMenu === 'classes' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Manage Classes</h2>
+              <button className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
+                <Plus className="h-4 w-4" />
+                Add New Class
+              </button>
+            </div>
+
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Class Name</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Arms</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Students</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Class Teacher</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {mockClasses.map(cls => (
+                    <tr key={cls.id}>
+                      <td className="px-6 py-4 font-medium">{cls.name}</td>
+                      <td className="px-6 py-4">{cls.arms.join(', ')}</td>
+                      <td className="px-6 py-4">{mockStudents.filter(s => s.classId === cls.id).length}</td>
+                      <td className="px-6 py-4">Mr. John Doe</td>
+                      <td className="px-6 py-4">
+                        <button className="text-blue-600 hover:text-blue-800 mr-3">
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button className="text-red-600 hover:text-red-800">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* MANAGE TEACHERS */}
+        {activeMenu === 'teachers' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Manage Teachers</h2>
+              <button className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
+                <Plus className="h-4 w-4" />
+                Add New Teacher
+              </button>
+            </div>
+
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Teacher ID</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Name</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Email</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Assigned Classes</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {mockTeachers.map(teacher => (
+                    <tr key={teacher.id}>
+                      <td className="px-6 py-4 font-medium">{teacher.teacherId}</td>
+                      <td className="px-6 py-4">{teacher.name}</td>
+                      <td className="px-6 py-4">{teacher.email}</td>
+                      <td className="px-6 py-4">{teacher.classIds.join(', ')}</td>
+                      <td className="px-6 py-4">
+                        <button className="text-blue-600 hover:text-blue-800 mr-3">
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button className="text-red-600 hover:text-red-800">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* MANAGE STUDENTS */}
+        {activeMenu === 'students' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Manage Students</h2>
+              <button className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
+                <Plus className="h-4 w-4" />
+                Add New Student
+              </button>
+            </div>
+
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Student ID</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Name</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Class</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Arm</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Date of Birth</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {mockStudents.map(student => (
+                    <tr key={student.id}>
+                      <td className="px-6 py-4 font-medium">{student.studentId}</td>
+                      <td className="px-6 py-4">{student.name}</td>
+                      <td className="px-6 py-4">JSS {student.classId}</td>
+                      <td className="px-6 py-4">{student.arm}</td>
+                      <td className="px-6 py-4">{student.dateOfBirth}</td>
+                      <td className="px-6 py-4">
+                        <button className="text-blue-600 hover:text-blue-800 mr-3">
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button className="text-red-600 hover:text-red-800">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW / FILTER / APPROVE RESULTS */}
+        {activeMenu === 'results' && (
+          <div>
+            <h2 className="text-2xl font-bold mb-6">View & Approve Results</h2>
+
+            {/* Filters */}
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Class</label>
+                  <select 
+                    className="w-full border rounded-lg px-3 py-2"
+                    value={selectedClass}
+                    onChange={(e) => setSelectedClass(e.target.value)}
+                  >
+                    <option value="">All Classes</option>
+                    {mockClasses.map(cls => (
+                      <option key={cls.id} value={cls.name}>{cls.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Arm</label>
+                  <select 
+                    className="w-full border rounded-lg px-3 py-2"
+                    value={selectedArm}
+                    onChange={(e) => setSelectedArm(e.target.value)}
+                  >
+                    <option value="">All Arms</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Search Student</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <input
+                      type="text"
+                      placeholder="Search by name..."
+                      className="w-full pl-10 pr-4 py-2 border rounded-lg"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Results Table */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Student</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Class</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Arm</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Term</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Session</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Subjects</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Status</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredResults.map(result => (
+                    <tr key={result.id}>
+                      <td className="px-6 py-4 font-medium">{result.studentName}</td>
+                      <td className="px-6 py-4">{result.className}</td>
+                      <td className="px-6 py-4">{result.arm}</td>
+                      <td className="px-6 py-4 capitalize">{result.term}</td>
+                      <td className="px-6 py-4">{result.session}</td>
+                      <td className="px-6 py-4">{result.subjects.length} subjects</td>
+                      <td className="px-6 py-4">
+                        <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">
+                          Pending Approval
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button 
+                          onClick={() => handleApproveResult(result.id)}
+                          className="text-green-600 hover:text-green-800 mr-3"
+                          title="Approve"
+                        >
+                          <CheckCircle className="h-5 w-5" />
+                        </button>
+                        <button 
+                          onClick={() => handleRejectResult(result.id)}
+                          className="text-red-600 hover:text-red-800 mr-3"
+                          title="Reject"
+                        >
+                          <XCircle className="h-5 w-5" />
+                        </button>
+                        <button 
+                          className="text-blue-600 hover:text-blue-800"
+                          title="View Details"
+                        >
+                          <Eye className="h-5 w-5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {filteredResults.length === 0 && (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">No results found</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+
+?? TEACHER DASHBOARD
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { 
+  LogOut, 
+  BookOpen, 
+  Users, 
+  Save,
+  CheckCircle,
+  Clock
+} from 'lucide-react';
+import { mockTeachers, mockStudents, mockClasses } from '@/lib/mockData';
+import toast from 'react-hot-toast';
+
+export default function TeacherDashboard() {
+  const router = useRouter();
+  const [teacher, setTeacher] = useState<any>(null);
+  const [assignedClass, setAssignedClass] = useState<any>(null);
+  const [selectedArm, setSelectedArm] = useState('A');
+  const [students, setStudents] = useState<any[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState('');
+  const [scores, setScores] = useState({
+    mathematics: { ca1: 0, ca2: 0, exam: 0 },
+    english: { ca1: 0, ca2: 0, exam: 0 },
+    physics: { ca1: 0, ca2: 0, exam: 0 }
+  });
+  const [submittedResults, setSubmittedResults] = useState<any[]>([]);
+
+  useEffect(() => {
+    // For demo, use first teacher (Mr. John Okonkwo)
+    const currentTeacher = mockTeachers[0];
+    setTeacher(currentTeacher);
+    
+    // Get the class assigned to this teacher (first one)
+    if (currentTeacher.classIds.length > 0) {
+      const className = currentTeacher.classIds[0]; // "JSS 1"
+      const classData = mockClasses.find(c => c.name === className);
+      setAssignedClass(classData);
+    }
+  }, []);
+
+  // Update students when arm changes
+  useEffect(() => {
+    if (assignedClass && teacher) {
+      const classStudents = mockStudents.filter(s => 
+        s.classId === assignedClass.id && s.arm === selectedArm
+      );
+      setStudents(classStudents);
+    }
+  }, [assignedClass, selectedArm, teacher]);
+
+  const handleScoreChange = (
+    subject: 'mathematics' | 'english' | 'physics',
+    field: 'ca1' | 'ca2' | 'exam',
+    value: string
+  ) => {
+    const numValue = parseInt(value) || 0;
+    const maxValues = { ca1: 20, ca2: 20, exam: 60 };
+    
+    if (numValue > maxValues[field]) {
+      toast.error(`${field.toUpperCase()} cannot exceed ${maxValues[field]}`);
+      return;
+    }
+
+    setScores(prev => ({
+      ...prev,
+      [subject]: {
+        ...prev[subject],
+        [field]: numValue
+      }
+    }));
+  };
+
+  const calculateTotal = (subject: any) => {
+    return subject.ca1 + subject.ca2 + subject.exam;
+  };
+
+  const calculateGrade = (total: number) => {
+    if (total >= 75) return 'A';
+    if (total >= 65) return 'B';
+    if (total >= 55) return 'C';
+    if (total >= 45) return 'D';
+    return 'F';
+  };
+
+  const handleSubmit = () => {
+    if (!selectedStudent) {
+      toast.error('Please select a student');
+      return;
+    }
+
+    const student = students.find(s => s.id === selectedStudent);
+    
+    // Create result object
+    const result = {
+      id: Date.now().toString(),
+      studentId: selectedStudent,
+      studentName: student?.name,
+      className: assignedClass?.name,
+      arm: selectedArm,
+      term: 'first',
+      session: '2024/2025',
+      subjects: [
+        {
+          name: 'Mathematics',
+          ...scores.mathematics,
+          total: calculateTotal(scores.mathematics),
+          grade: calculateGrade(calculateTotal(scores.mathematics))
+        },
+        {
+          name: 'English',
+          ...scores.english,
+          total: calculateTotal(scores.english),
+          grade: calculateGrade(calculateTotal(scores.english))
+        },
+        {
+          name: 'Physics',
+          ...scores.physics,
+          total: calculateTotal(scores.physics),
+          grade: calculateGrade(calculateTotal(scores.physics))
+        }
+      ],
+      status: 'pending',
+      submittedAt: new Date().toLocaleString(),
+      submittedBy: teacher?.name
+    };
+
+    // Add to submitted results list
+    setSubmittedResults(prev => [result, ...prev]);
+    
+    // Reset form
+    setSelectedStudent('');
+    setScores({
+      mathematics: { ca1: 0, ca2: 0, exam: 0 },
+      english: { ca1: 0, ca2: 0, exam: 0 },
+      physics: { ca1: 0, ca2: 0, exam: 0 }
+    });
+
+    toast.success(`Result submitted for ${student?.name} (Pending Approval)`);
+  };
+
+  if (!teacher) {
+    return <div className="flex justify-center items-center h-screen">Loading...</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-blue-600 text-white">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold">Teacher Portal</h1>
+              <p className="text-blue-100">{teacher.name} ({teacher.teacherId})</p>
+            </div>
+            <button 
+              onClick={() => router.push('/login')}
+              className="flex items-center gap-2 bg-blue-700 px-4 py-2 rounded-lg hover:bg-blue-800"
+            >
+              <LogOut className="h-4 w-4" /> Logout
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Step 1: See Assigned Class */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center">
+              <span className="text-blue-600 font-bold">1</span>
+            </div>
+            <h2 className="text-xl font-semibold">Your Assigned Class</h2>
+          </div>
+          
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-lg font-medium text-blue-800">
+              {assignedClass?.name || 'No class assigned'}
+            </p>
+            <p className="text-sm text-blue-600 mt-1">
+              Academic Year: 2024/2025 | Term: First Term
+            </p>
+          </div>
+        </div>
+
+        {/* Step 2: See Students */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center">
+              <span className="text-blue-600 font-bold">2</span>
+            </div>
+            <h2 className="text-xl font-semibold">Select Arm & Student</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Select Arm</label>
+              <select 
+                className="w-full border rounded-lg px-3 py-2"
+                value={selectedArm}
+                onChange={(e) => setSelectedArm(e.target.value)}
+              >
+                <option value="A">Arm A</option>
+                <option value="B">Arm B</option>
+                <option value="C">Arm C</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Select Student</label>
+              <select 
+                className="w-full border rounded-lg px-3 py-2"
+                value={selectedStudent}
+                onChange={(e) => setSelectedStudent(e.target.value)}
+              >
+                <option value="">Choose a student</option>
+                {students.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.studentId})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Student Count */}
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Users className="h-4 w-4" />
+            <span>{students.length} students in {assignedClass?.name} {selectedArm}</span>
+          </div>
+        </div>
+
+        {/* Step 3: Input Scores */}
+        {selectedStudent && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 font-bold">3</span>
+              </div>
+              <h2 className="text-xl font-semibold">Enter Scores</h2>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="border p-3 text-left">Subject</th>
+                    <th className="border p-3">CA 1 (20)</th>
+                    <th className="border p-3">CA 2 (20)</th>
+                    <th className="border p-3">Exam (60)</th>
+                    <th className="border p-3">Total</th>
+                    <th className="border p-3">Grade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Mathematics */}
+                  <tr>
+                    <td className="border p-3 font-medium">Mathematics</td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={scores.mathematics.ca1 || ''}
+                        onChange={(e) => handleScoreChange('mathematics', 'ca1', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={scores.mathematics.ca2 || ''}
+                        onChange={(e) => handleScoreChange('mathematics', 'ca2', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="60"
+                        value={scores.mathematics.exam || ''}
+                        onChange={(e) => handleScoreChange('mathematics', 'exam', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3 text-center font-medium">
+                      {calculateTotal(scores.mathematics)}
+                    </td>
+                    <td className="border p-3 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold
+                        ${calculateGrade(calculateTotal(scores.mathematics)) === 'A' ? 'bg-green-100 text-green-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.mathematics)) === 'B' ? 'bg-blue-100 text-blue-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.mathematics)) === 'C' ? 'bg-yellow-100 text-yellow-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.mathematics)) === 'D' ? 'bg-orange-100 text-orange-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.mathematics)) === 'F' ? 'bg-red-100 text-red-800' : ''}
+                      `}>
+                        {calculateGrade(calculateTotal(scores.mathematics))}
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* English */}
+                  <tr>
+                    <td className="border p-3 font-medium">English</td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={scores.english.ca1 || ''}
+                        onChange={(e) => handleScoreChange('english', 'ca1', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={scores.english.ca2 || ''}
+                        onChange={(e) => handleScoreChange('english', 'ca2', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="60"
+                        value={scores.english.exam || ''}
+                        onChange={(e) => handleScoreChange('english', 'exam', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3 text-center font-medium">
+                      {calculateTotal(scores.english)}
+                    </td>
+                    <td className="border p-3 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold
+                        ${calculateGrade(calculateTotal(scores.english)) === 'A' ? 'bg-green-100 text-green-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.english)) === 'B' ? 'bg-blue-100 text-blue-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.english)) === 'C' ? 'bg-yellow-100 text-yellow-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.english)) === 'D' ? 'bg-orange-100 text-orange-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.english)) === 'F' ? 'bg-red-100 text-red-800' : ''}
+                      `}>
+                        {calculateGrade(calculateTotal(scores.english))}
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Physics */}
+                  <tr>
+                    <td className="border p-3 font-medium">Physics</td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={scores.physics.ca1 || ''}
+                        onChange={(e) => handleScoreChange('physics', 'ca1', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={scores.physics.ca2 || ''}
+                        onChange={(e) => handleScoreChange('physics', 'ca2', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3">
+                      <input 
+                        type="number"
+                        min="0"
+                        max="60"
+                        value={scores.physics.exam || ''}
+                        onChange={(e) => handleScoreChange('physics', 'exam', e.target.value)}
+                        className="w-16 border rounded px-2 py-1 text-center"
+                      />
+                    </td>
+                    <td className="border p-3 text-center font-medium">
+                      {calculateTotal(scores.physics)}
+                    </td>
+                    <td className="border p-3 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold
+                        ${calculateGrade(calculateTotal(scores.physics)) === 'A' ? 'bg-green-100 text-green-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.physics)) === 'B' ? 'bg-blue-100 text-blue-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.physics)) === 'C' ? 'bg-yellow-100 text-yellow-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.physics)) === 'D' ? 'bg-orange-100 text-orange-800' : ''}
+                        ${calculateGrade(calculateTotal(scores.physics)) === 'F' ? 'bg-red-100 text-red-800' : ''}
+                      `}>
+                        {calculateGrade(calculateTotal(scores.physics))}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Step 4: Submit */}
+            <div className="mt-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center">
+                  <span className="text-blue-600 font-bold">4</span>
+                </div>
+                <h2 className="text-xl font-semibold">Submit for Approval</h2>
+              </div>
+
+              <button
+                onClick={handleSubmit}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                Submit Result (Status: Pending Approval)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Recently Submitted Results */}
+        {submittedResults.length > 0 && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Clock className="h-5 w-5 text-blue-600" />
+              Recently Submitted Results (Pending)
+            </h3>
+            
+            <div className="space-y-3">
+              {submittedResults.map((result, index) => (
+                <div key={index} className="border rounded-lg p-4 bg-yellow-50">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-medium">{result.studentName}</p>
+                      <p className="text-sm text-gray-600">
+                        {result.className} {result.arm} • {result.term} term {result.session}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Submitted: {result.submittedAt}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-yellow-200 text-yellow-800 px-2 py-1 rounded-full text-xs flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Pending
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+
+?? STUDENT PORTAL
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { LogOut, Search, Calendar, BookOpen, Award, Users, Download } from 'lucide-react';
+import { mockResults, mockStudents, mockClasses } from '@/lib/mockData';
+import toast from 'react-hot-toast';
+
+export default function StudentPortal() {
+  const router = useRouter();
+  const [studentId, setStudentId] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [selectedSession, setSelectedSession] = useState('2024/2025');
+  const [selectedTerm, setSelectedTerm] = useState('first');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [studentData, setStudentData] = useState<any>(null);
+  const [results, setResults] = useState<any>(null);
+
+  const sessions = ['2024/2025', '2023/2024', '2022/2023'];
+  const terms = ['first', 'second', 'third'];
+
+  // Function to convert number to ordinal (1st, 2nd, 3rd, etc.)
+  const getPositionInWords = (position: number) => {
+    if (position === 1) return '1st Position';
+    if (position === 2) return '2nd Position';
+    if (position === 3) return '3rd Position';
+    return `${position}th Position`;
+  };
+
+  // Function to calculate position in class
+  const calculatePosition = (studentId: string, classResults: any[]) => {
+    // Get all students in same class and sort by total score
+    const classScores = classResults
+      .filter(r => r.className === results?.className && r.term === selectedTerm)
+      .map(r => ({
+        studentId: r.studentId,
+        total: r.subjects.reduce((sum: number, sub: any) => sum + sub.total, 0)
+      }))
+      .sort((a, b) => b.total - a.total);
+    
+    const position = classScores.findIndex(s => s.studentId === studentId) + 1;
+    const totalStudents = classScores.length;
+    
+    return { position, totalStudents, positionWord: getPositionInWords(position) };
+  };
+
+  // Function to get class teacher remark based on performance
+  const getClassTeacherRemark = (totalScore: number, averageScore: number, position: number) => {
+    if (position === 1) return "Excellent performance! You're the best. Keep it up.";
+    if (position === 2) return "Very good work. Aim for the top next time.";
+    if (position === 3) return "Good effort. You can move higher.";
+    if (averageScore >= 65) return "Very good work. Can do even better.";
+    if (averageScore >= 55) return "Good result. Put in more effort.";
+    if (averageScore >= 45) return "Fair result. Needs improvement.";
+    if (averageScore >= 40) return "Below average. Work harder.";
+    return "Poor performance. See me immediately.";
+  };
+
+  // Function to get principal's remark based on overall performance
+  const getPrincipalRemark = (totalScore: number, averageScore: number, position: number) => {
+    if (position === 1) return "Promoted to next class with distinction. Excellent!";
+    if (position === 2) return "Promoted to next class with merit. Very good.";
+    if (position === 3) return "Promoted to next class. Good performance.";
+    if (averageScore >= 60) return "Promoted. Very good performance.";
+    if (averageScore >= 50) return "Promoted. Can improve.";
+    if (averageScore >= 45) return "Promoted on trial. Work harder.";
+    return "Not promoted. Repeat class.";
+  };
+
+  // Function to get recommendation
+  const getRecommendation = (averageScore: number, position: number) => {
+    if (position === 1) return "Highly Recommended for Academic Scholarship";
+    if (position === 2) return "Recommended for Science/Arts Stream";
+    if (position === 3) return "Recommended for Competitive Exams";
+    if (averageScore >= 65) return "Recommended for Science/Arts";
+    if (averageScore >= 55) return "Recommended for Technical/Vocational";
+    if (averageScore >= 45) return "Recommended with Monitoring";
+    return "Needs Remedial Classes";
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const student = mockStudents.find(s => 
+      s.studentId === studentId && s.dateOfBirth === dateOfBirth
+    );
+
+    if (student) {
+      setIsLoggedIn(true);
+      setStudentData(student);
+      
+      const studentResults = mockResults.filter(r => r.studentId === student.id);
+      setResults(studentResults);
+      
+      toast.success('Login successful');
+    } else {
+      toast.error('Invalid Student ID or Date of Birth');
+    }
+  };
+
+  const getFilteredResults = () => {
+    if (!results) return null;
+    return results.find((r: any) => 
+      r.term === selectedTerm && r.session === selectedSession
+    );
+  };
+
+  const filteredResults = getFilteredResults();
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+          <div className="text-center mb-8">
+            <BookOpen className="h-12 w-12 text-blue-600 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold">Student Result Checker</h1>
+            <p className="text-gray-600">Enter your details to view results</p>
+          </div>
+
+          <form onSubmit={handleLogin}>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Student ID / School Number
+              </label>
+              <input
+                type="text"
+                required
+                className="w-full border rounded-md px-3 py-2"
+                placeholder="e.g., STU001"
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date of Birth
+              </label>
+              <input
+                type="date"
+                required
+                className="w-full border rounded-md px-3 py-2"
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
+            >
+              Check Result
+            </button>
+          </form>
+
+          <div className="mt-4 text-sm text-gray-500 text-center">
+            Demo: STU001 / 2010-05-15
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate totals and averages
+  const totalScore = filteredResults?.subjects.reduce((sum: number, sub: any) => sum + sub.total, 0) || 0;
+  const averageScore = filteredResults?.subjects.length > 0 
+    ? (totalScore / filteredResults.subjects.length).toFixed(1) 
+    : 0;
+  
+  const position = filteredResults 
+    ? calculatePosition(studentData.id, results) 
+    : { position: 0, totalStudents: 0, positionWord: '' };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-blue-600 text-white print:bg-white print:text-black">
+        <div className="max-w-4xl mx-auto px-4 py-4 print:py-2">
+          <div className="flex justify-between items-center print:hidden">
+            <div>
+              <h1 className="text-2xl font-bold">Student Portal</h1>
+              <p className="text-blue-100">Welcome, {studentData.name}</p>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => window.print()}
+                className="flex items-center gap-2 bg-blue-700 px-4 py-2 rounded-lg hover:bg-blue-800"
+              >
+                <Download className="h-4 w-4" /> Print
+              </button>
+              <button 
+                onClick={() => {
+                  setIsLoggedIn(false);
+                  setStudentId('');
+                  setDateOfBirth('');
+                }}
+                className="flex items-center gap-2 bg-blue-700 px-4 py-2 rounded-lg hover:bg-blue-800"
+              >
+                <LogOut className="h-4 w-4" /> Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-4xl mx-auto px-4 py-8 print:py-2">
+        {/* Student Info Card */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6 print:shadow-none print:border print:mb-4">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">ACADEMIC REPORT SHEET</h2>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+                <div>
+                  <p className="text-sm text-gray-500">Student Name:</p>
+                  <p className="font-semibold">{studentData.name}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Student ID:</p>
+                  <p className="font-semibold">{studentData.studentId}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Class:</p>
+                  <p className="font-semibold">{filteredResults?.className || 'JSS 1'} {filteredResults?.arm || 'A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Term/Session:</p>
+                  <p className="font-semibold capitalize">{selectedTerm} Term {selectedSession}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Date of Birth:</p>
+                  <p className="font-semibold">{studentData.dateOfBirth}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Date Printed:</p>
+                  <p className="font-semibold">{new Date().toLocaleDateString()}</p>
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                <p className="text-sm text-gray-500 mb-1">Position</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {position.positionWord}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Out of {position.totalStudents} students
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Result Filters */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6 print:hidden">
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar className="h-5 w-5 text-blue-600" />
+            <h2 className="text-lg font-semibold">Select Result to View</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Session</label>
+              <select 
+                className="w-full border rounded-md px-3 py-2"
+                value={selectedSession}
+                onChange={(e) => setSelectedSession(e.target.value)}
+              >
+                {sessions.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Term</label>
+              <select 
+                className="w-full border rounded-md px-3 py-2"
+                value={selectedTerm}
+                onChange={(e) => setSelectedTerm(e.target.value)}
+              >
+                {terms.map(t => (
+                  <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)} Term</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Results Display */}
+        {filteredResults ? (
+          <div className="bg-white rounded-lg shadow-md p-6 print:shadow-none print:border">
+            {/* Subjects Table */}
+            <table className="w-full border-collapse mb-6">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border p-3 text-left">Subject</th>
+                  <th className="border p-3">CA 1 (20)</th>
+                  <th className="border p-3">CA 2 (20)</th>
+                  <th className="border p-3">Exam (60)</th>
+                  <th className="border p-3">Total</th>
+                  <th className="border p-3">Grade</th>
+                  <th className="border p-3">Remark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredResults.subjects.map((subject: any, index: number) => (
+                  <tr key={index}>
+                    <td className="border p-3 font-medium">{subject.name}</td>
+                    <td className="border p-3 text-center">{subject.ca1}</td>
+                    <td className="border p-3 text-center">{subject.ca2}</td>
+                    <td className="border p-3 text-center">{subject.exam}</td>
+                    <td className="border p-3 text-center font-bold">{subject.total}</td>
+                    <td className="border p-3 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold
+                        ${subject.grade === 'A' ? 'bg-green-100 text-green-800' : ''}
+                        ${subject.grade === 'B' ? 'bg-blue-100 text-blue-800' : ''}
+                        ${subject.grade === 'C' ? 'bg-yellow-100 text-yellow-800' : ''}
+                        ${subject.grade === 'D' ? 'bg-orange-100 text-orange-800' : ''}
+                        ${subject.grade === 'F' ? 'bg-red-100 text-red-800' : ''}
+                      `}>
+                        {subject.grade}
+                      </span>
+                    </td>
+                    <td className="border p-3 text-center">{subject.remark}</td>
+                  </tr>
+                ))}
+                
+                {/* Total Row */}
+                <tr className="bg-gray-50 font-bold">
+                  <td colSpan={4} className="border p-3 text-right">Total</td>
+                  <td className="border p-3 text-center">{totalScore}</td>
+                  <td className="border p-3 text-center" colSpan={2}></td>
+                </tr>
+                <tr className="bg-gray-50">
+                  <td colSpan={4} className="border p-3 text-right">Average</td>
+                  <td className="border p-3 text-center">{averageScore}%</td>
+                  <td className="border p-3 text-center" colSpan={2}></td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Grade Scale */}
+            <div className="grid grid-cols-5 gap-2 mb-6 text-xs text-center">
+              <div className="bg-green-100 p-2 rounded">A: 75-100</div>
+              <div className="bg-blue-100 p-2 rounded">B: 65-74</div>
+              <div className="bg-yellow-100 p-2 rounded">C: 55-64</div>
+              <div className="bg-orange-100 p-2 rounded">D: 45-54</div>
+              <div className="bg-red-100 p-2 rounded">F: 0-44</div>
+            </div>
+
+            {/* Teacher's Remarks */}
+            <div className="space-y-4 border-t pt-4">
+              <div>
+                <p className="text-sm text-gray-500">Class Teacher's Remark:</p>
+                <p className="font-medium p-2 bg-gray-50 rounded">
+                  {getClassTeacherRemark(totalScore, Number(averageScore), position.position)}
+                </p>
+                <div className="flex justify-between mt-1">
+                  <p className="text-sm text-gray-500">______________________</p>
+                  <p className="text-sm text-gray-500">Class Teacher's Signature</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-gray-500">Principal's Remark:</p>
+                <p className="font-medium p-2 bg-gray-50 rounded">
+                  {getPrincipalRemark(totalScore, Number(averageScore), position.position)}
+                </p>
+                <div className="flex justify-between mt-1">
+                  <p className="text-sm text-gray-500">______________________</p>
+                  <p className="text-sm text-gray-500">Principal's Signature</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-gray-500">Recommendation:</p>
+                <p className="font-medium p-2 bg-gray-50 rounded">
+                  {getRecommendation(Number(averageScore), position.position)}
+                </p>
+              </div>
+            </div>
+
+            {/* School Stamp and Date */}
+            <div className="flex justify-between items-center mt-6 pt-4 border-t">
+              <div className="text-sm text-gray-500">
+                <p>Next Term Begins: 15th September, 2024</p>
+                <p>School Fee Deadline: 10th September, 2024</p>
+              </div>
+              <div className="text-center">
+                <div className="border-2 border-dashed border-gray-300 w-24 h-24 mx-auto flex items-center justify-center text-gray-400">
+                  SCHOOL STAMP
+                </div>
+              </div>
+            </div>
+
+            {/* Print-Optimized Footer */}
+            <div className="text-center text-xs text-gray-400 mt-4 print:block hidden">
+              This is a computer-generated document. No signature required.
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow-md p-12 text-center">
+            <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500">No result found for {selectedTerm} term {selectedSession}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Print Styles */}
+      <style jsx global>{`
+        @media print {
+          body { background: white; }
+          .print\\:hidden { display: none !important; }
+          .print\\:shadow-none { box-shadow: none !important; }
+          .print\\:border { border: 1px solid #000 !important; }
+          .print\\:block { display: block !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+
+
+
+?? PROXY
+import { withAuth } from "next-auth/middleware";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+export function proxy(request: NextRequest) {
+  return withAuth(request);
+}
+
+export const config = {
+  matcher: ["/admin/:path*", "/teacher/:path*"],
+};
+
+
+
+
+
+?? FOLDER STRUCTURE
+C:\Users\KING\school-management-system\src\app
+C:\Users\KING\school-management-system\src\components
+C:\Users\KING\school-management-system\src\hooks
+C:\Users\KING\school-management-system\src\lib
+C:\Users\KING\school-management-system\src\middleware
+C:\Users\KING\school-management-system\src\types
+C:\Users\KING\school-management-system\src\app\(auth)
+C:\Users\KING\school-management-system\src\app\(dashboard)
+C:\Users\KING\school-management-system\src\app\api
+C:\Users\KING\school-management-system\src\app\auth
+C:\Users\KING\school-management-system\src\app\dashboard
+C:\Users\KING\school-management-system\src\app\(auth)\login
+C:\Users\KING\school-management-system\src\app\(auth)\register
+C:\Users\KING\school-management-system\src\app\(dashboard)\admin
+C:\Users\KING\school-management-system\src\app\(dashboard)\parent
+C:\Users\KING\school-management-system\src\app\(dashboard)\student
+C:\Users\KING\school-management-system\src\app\(dashboard)\teacher
+C:\Users\KING\school-management-system\src\app\api\auth
+C:\Users\KING\school-management-system\src\app\api\health
+C:\Users\KING\school-management-system\src\app\api\ping
+C:\Users\KING\school-management-system\src\app\api\results
+C:\Users\KING\school-management-system\src\app\api\students
+C:\Users\KING\school-management-system\src\app\api\teacher
+C:\Users\KING\school-management-system\src\app\api\test
+C:\Users\KING\school-management-system\src\app\api\auth\student
+C:\Users\KING\school-management-system\src\app\api\auth\[...nextauth]
+C:\Users\KING\school-management-system\src\app\api\teacher\assignments
+C:\Users\KING\school-management-system\src\app\auth\login
+C:\Users\KING\school-management-system\src\app\auth\register
+C:\Users\KING\school-management-system\src\app\dashboard\admin
+C:\Users\KING\school-management-system\src\app\dashboard\parent
+C:\Users\KING\school-management-system\src\app\dashboard\student
+C:\Users\KING\school-management-system\src\app\dashboard\teacher
+C:\Users\KING\school-management-system\src\components\layout
+C:\Users\KING\school-management-system\src\components\ui
+
+

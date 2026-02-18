@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model School {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  users     User[]
+  students  Student[]
+  teachers  Teacher[]
+  admins    Admin[]
+  classes   Class[]
+  sessions  Session[]
+  terms     Term[]
+  results   Result[]
+  
+  @@map("schools")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  email     String   @unique
+  password  String?
+  role      UserRole @default(STUDENT)
+  name      String
+  
+  student   Student?
+  teacher   Teacher?
+  admin     Admin?
+  
+  @@map("users")
+}
+
+model Student {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id])
+  
+  studentId   String
+  dateOfBirth DateTime
+  classId     String
+  class       Class    @relation(fields: [classId], references: [id])
+  arm         String?
+  
+  results     Result[]
+  
+  @@unique([schoolId, studentId])
+  @@map("students")
+}
+
+model Teacher {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id])
+  
+  teacherId   String
+  classIds    String[]
+  
+  @@map("teachers")
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  @@map("admins")
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  name      String
+  arms      String[]
+  
+  students  Student[]
+  
+  @@unique([schoolId, name])
+  @@map("classes")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  name      String
+  isActive  Boolean  @default(false)
+  
+  terms     Term[]
+  
+  @@unique([schoolId, name])
+  @@map("sessions")
+}
+
+model Term {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  name      String
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id])
+  isActive  Boolean  @default(false)
+  
+  @@unique([schoolId, sessionId, name])
+  @@map("terms")
+}
+
+model Result {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  
+  className String
+  arm       String?
+  term      String
+  session   String
+  
+  subjects  Json
+  
+  totalScore    Int
+  averageScore  Float
+  position      Int?
+  totalStudents Int?
+  
+  classTeacherRemark String?
+  principalRemark    String?
+  recommendation     String?
+  
+  status        ResultStatus @default(PENDING)
+  
+  submittedBy   String
+  submittedAt   DateTime     @default(now())
+  approvedBy    String?
+  approvedAt    DateTime?
+  
+  @@unique([schoolId, studentId, session, term])
+  @@map("results")
+}
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum ResultStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
