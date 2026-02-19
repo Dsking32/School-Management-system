@@ -1,13 +1,14 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { Providers } from './providers';
 import { Toaster } from 'react-hot-toast';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'EduManage NG - School Management System for Nigerian Secondary Schools',
-  description: 'A web-based school management system digitizing result processing and promoting paperless administration',
+  title: 'EduManage NG - School Management System',
+  description: 'School Management System for Nigerian Secondary Schools',
 };
 
 export default function RootLayout({
@@ -18,9 +19,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <main className="min-h-screen bg-gray-50">
+        <Providers>
           {children}
-        </main>
+        </Providers>
         <Toaster position="top-right" />
       </body>
     </html>

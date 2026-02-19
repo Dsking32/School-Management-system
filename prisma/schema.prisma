@@ -10,14 +10,18 @@ model School {
   id        String   @id @default(cuid())
   name      String
   code      String   @unique
+  
+  // Relations
   users     User[]
   students  Student[]
   teachers  Teacher[]
   admins    Admin[]
   classes   Class[]
+  subjects  Subject[]
   sessions  Session[]
   terms     Term[]
   results   Result[]
+  assignments TeacherAssignment[]
   
   @@map("schools")
 }
@@ -25,7 +29,7 @@ model School {
 model User {
   id        String   @id @default(cuid())
   schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id])
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   
   email     String   @unique
   password  String?
@@ -42,7 +46,7 @@ model User {
 model Student {
   id          String   @id @default(cuid())
   userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   schoolId    String
   school      School   @relation(fields: [schoolId], references: [id])
   
@@ -61,12 +65,13 @@ model Student {
 model Teacher {
   id          String   @id @default(cuid())
   userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   schoolId    String
   school      School   @relation(fields: [schoolId], references: [id])
   
   teacherId   String
   classIds    String[]
+  assignments TeacherAssignment[]
   
   @@map("teachers")
 }
@@ -74,7 +79,7 @@ model Teacher {
 model Admin {
   id        String   @id @default(cuid())
   userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   schoolId  String
   school    School   @relation(fields: [schoolId], references: [id])
   
@@ -90,9 +95,42 @@ model Class {
   arms      String[]
   
   students  Student[]
+  subjects  Subject[]
+  assignments TeacherAssignment[]
   
   @@unique([schoolId, name])
   @@map("classes")
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  name      String
+  code      String   @unique
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id])
+  
+  assignments TeacherAssignment[]
+  
+  @@map("subjects")
+}
+
+model TeacherAssignment {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  
+  teacherId String
+  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id])
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+  
+  @@unique([classId, subjectId])
+  @@map("teacher_assignments")
 }
 
 model Session {
@@ -129,7 +167,7 @@ model Result {
   school    School   @relation(fields: [schoolId], references: [id])
   
   studentId String
-  student   Student  @relation(fields: [studentId], references: [id])
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   
   className String
   arm       String?

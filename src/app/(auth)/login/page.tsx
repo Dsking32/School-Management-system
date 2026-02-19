@@ -1,23 +1,44 @@
 ﻿'use client';
 
-import { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogIn, User, Lock } from 'lucide-react';
+import { signIn, signOut, useSession } from 'next-auth/react';
+import { LogIn, User, Lock, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('student');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // If there's an active session, show warning
+  useEffect(() => {
+    if (session) {
+      toast.success(`Already logged in as ${session.user?.name}`, {
+        duration: 4000,
+        icon: '👋'
+      });
+    }
+  }, [session]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
 
     try {
+      // First, sign out any existing session
+      if (session) {
+        await signOut({ redirect: false });
+        // Small delay to ensure sign out completes
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Then sign in with new credentials
       const result = await signIn('credentials', {
         email,
         password,
@@ -26,23 +47,34 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
+        setError('Invalid email or password');
         toast.error('Invalid credentials');
         setLoading(false);
       } else {
-        // Redirect based on role
+        toast.success(`Welcome, ${email}!`);
+        
+        // Force a hard navigation to ensure fresh session
         if (role === 'admin') {
-          router.push('/admin');
+          window.location.href = '/admin';
         } else if (role === 'teacher') {
-          router.push('/teacher');
+          window.location.href = '/teacher';
         } else {
-          router.push('/student');
+          window.location.href = '/student';
         }
-        toast.success('Login successful');
       }
     } catch (error) {
-      toast.error('An error occurred');
+      setError('An error occurred. Please try again.');
+      toast.error('Login failed');
       setLoading(false);
     }
+  };
+
+  const handleLogoutFirst = async () => {
+    await signOut({ redirect: false });
+    toast.success('Logged out successfully');
+    // Clear any stored session data
+    setEmail('');
+    setPassword('');
   };
 
   return (
@@ -55,6 +87,28 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold">School Management System</h1>
           <p className="text-gray-600">Sign in to your account</p>
         </div>
+
+        {session && (
+          <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-sm text-yellow-800 mb-2 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              Already logged in as <strong>{session.user?.name}</strong>
+            </p>
+            <button
+              onClick={handleLogoutFirst}
+              className="text-sm text-blue-600 hover:text-blue-800 underline"
+            >
+              Click here to logout first
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm">{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleLogin}>
           <div className="mb-4">
@@ -114,9 +168,12 @@ export default function LoginPage() {
 
         <div className="mt-6 text-sm text-gray-500">
           <p className="font-medium mb-2">Demo Login:</p>
-          <p>Admin: admin@school.com / admin123</p>
+          <p>Student: student@school.com / password</p>
           <p>Teacher: john.okonkwo@school.com / password</p>
-          <p>Student: Use student portal with ID/DOB</p>
+          <p>Admin: admin@school.com / admin123</p>
+          <p className="text-xs text-gray-400 mt-2">
+            Note: Please use different browsers or incognito windows to test multiple accounts simultaneously
+          </p>
         </div>
       </div>
     </div>
